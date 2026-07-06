@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Cek LASA — Scanner Obat</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js"></script>
+<style>
+  :root{
+    --bg: #F4F7F6;
+    --surface: #FFFFFF;
+    --ink: #14302B;
+    --ink-soft: #4C645F;
+    --line: #DDE7E3;
+    --teal: #1F6B63;
+    --teal-deep: #123F3A;
+    --amber: #C4791E;
+    --amber-bg: #FCF1E1;
+    --safe: #2E7D4F;
+    --safe-bg: #EAF6EE;
+    --danger: #B23A3A;
+    --radius: 18px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'Inter',sans-serif;
+    min-height:100vh;
+    display:flex;
+    justify-content:center;
+  }
+  .app{
+    width:100%;
+    max-width:430px;
+    min-height:100vh;
+    background:var(--bg);
+    display:flex;
+    flex-direction:column;
+    position:relative;
+  }
+  header{
+    padding:22px 20px 14px;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    border-bottom:1px solid var(--line);
+    background:var(--surface);
+  }
+  .mark{
+    width:34px;height:34px;border-radius:9px;
+    background:var(--teal-deep);
+    display:flex;align-items:center;justify-content:center;
+    flex-shrink:0;
+  }
+  .mark svg{width:18px;height:18px;}
+  header h1{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:17px;
+    margin:0;
+    letter-spacing:-0.01em;
+  }
+  header p{
+    margin:0;
+    font-size:11.5px;
+    color:var(--ink-soft);
+  }
+
+  main{
+    flex:1;
+    padding:20px;
+    display:flex;
+    flex-direction:column;
+    gap:16px;
+  }
+
+  /* Scan frame */
+  .scan-zone{
+    position:relative;
+    background:var(--teal-deep);
+    border-radius:var(--radius);
+    aspect-ratio:4/5;
+    overflow:hidden;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  .scan-zone img{
+    width:100%;height:100%;object-fit:cover;
+    position:absolute;inset:0;
+  }
+  .scan-zone.empty::before{
+    content:"";
+    position:absolute; inset:22px;
+    border-radius:14px;
+    background:
+      linear-gradient(90deg, rgba(255,255,255,.35) 3px, transparent 3px) 0 0,
+      linear-gradient(90deg, rgba(255,255,255,.35) 3px, transparent 3px) 0 100%,
+      linear-gradient(0deg, rgba(255,255,255,.35) 3px, transparent 3px) 0 0,
+      linear-gradient(0deg, rgba(255,255,255,.35) 3px, transparent 3px) 100% 0;
+    background-repeat:no-repeat;
+    background-size:32px 32px;
+    pointer-events:none;
+  }
+  .scan-hint{
+    color:rgba(255,255,255,.75);
+    font-size:12.5px;
+    text-align:center;
+    padding:0 40px;
+    position:relative;
+    z-index:2;
+  }
+  .scan-hint b{color:#fff;display:block;font-family:'Space Grotesk',sans-serif;font-size:15px;margin-bottom:6px;}
+
+  .scanline{
+    position:absolute;
+    left:22px;right:22px;
+    height:2px;
+    background:linear-gradient(90deg, transparent, #7FE0C8, transparent);
+    box-shadow:0 0 8px 1px rgba(127,224,200,.8);
+    animation:sweep 1.8s ease-in-out infinite;
+    display:none;
+  }
+  .scanning .scanline{display:block;}
+  .scanning .scan-hint{display:none;}
+  @keyframes sweep{
+    0%{top:20px;}
+    50%{top:calc(100% - 30px);}
+    100%{top:20px;}
+  }
+
+  input[type=file]{display:none;}
+
+  .actions{display:flex; gap:10px;}
+  .btn{
+    flex:1;
+    border:none;
+    border-radius:14px;
+    padding:14px 12px;
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:600;
+    font-size:14.5px;
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    cursor:pointer;
+  }
+  .btn svg{width:17px;height:17px;flex-shrink:0;}
+  .btn-primary{background:var(--teal); color:#fff;}
+  .btn-primary:active{background:var(--teal-deep);}
+  .btn-ghost{background:var(--surface); color:var(--ink); border:1px solid var(--line);}
+
+  .status-line{
+    font-size:12.5px;
+    color:var(--ink-soft);
+    text-align:center;
+    min-height:16px;
+  }
+
+  /* Result card */
+  .result{
+    background:var(--surface);
+    border-radius:var(--radius);
+    border:1px solid var(--line);
+    overflow:hidden;
+    display:none;
+  }
+  .result.show{display:block;}
+  .result-flag{
+    padding:16px 18px;
+    display:flex;
+    align-items:center;
+    gap:12px;
+  }
+  .result-flag.lasa{background:var(--amber-bg);}
+  .result-flag.aman{background:var(--safe-bg);}
+  .flag-icon{
+    width:38px;height:38px;border-radius:10px;
+    display:flex;align-items:center;justify-content:center;
+    flex-shrink:0;
+  }
+  .flag-icon svg{width:20px;height:20px;}
+  .lasa .flag-icon{background:var(--amber); }
+  .aman .flag-icon{background:var(--safe);}
+  .flag-icon svg{stroke:#fff;}
+  .flag-text b{
+    display:block;
+    font-family:'Space Grotesk',sans-serif;
+    font-size:16px;
+  }
+  .lasa .flag-text b{color:#8A5314;}
+  .aman .flag-text b{color:#1E5C38;}
+  .flag-text span{font-size:12px; color:var(--ink-soft);}
+
+  .result-body{padding:16px 18px 18px;}
+  .row-label{
+    font-size:10.5px;
+    text-transform:uppercase;
+    letter-spacing:.06em;
+    color:var(--ink-soft);
+    margin-bottom:6px;
+  }
+  .ocr-box{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:13px;
+    background:var(--bg);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:10px 12px;
+    margin-bottom:16px;
+    word-break:break-word;
+  }
+
+  .compare{
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+    margin-bottom:14px;
+  }
+  .compare-pair{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:15px;
+    padding:10px 12px;
+    border-radius:10px;
+    background:var(--bg);
+  }
+  .compare-pair .vs{
+    font-family:'Inter',sans-serif;
+    font-size:10px;
+    color:var(--ink-soft);
+    flex-shrink:0;
+  }
+  .compare-pair mark{
+    background:var(--amber);
+    color:#fff;
+    border-radius:3px;
+    padding:0 2px;
+  }
+  .cat-tag{
+    display:inline-block;
+    font-size:11px;
+    font-weight:600;
+    padding:3px 9px;
+    border-radius:20px;
+    background:#FCE9D2;
+    color:#8A5314;
+    margin-bottom:14px;
+  }
+  .note{
+    font-size:12px;
+    color:var(--ink-soft);
+    line-height:1.5;
+    border-top:1px solid var(--line);
+    padding-top:12px;
+  }
+
+  /* Manage list */
+  .manage{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:16px 18px;
+  }
+  .manage h2{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:14px;
+    margin:0 0 4px;
+  }
+  .manage p{
+    font-size:12px;
+    color:var(--ink-soft);
+    margin:0 0 12px;
+  }
+  .manage-form{display:flex; flex-direction:column; gap:8px; margin-bottom:12px;}
+  .manage-form .fields{display:flex; gap:8px;}
+  input[type=text]{
+    flex:1;
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:9px 11px;
+    font-family:'Inter',sans-serif;
+    font-size:13px;
+    background:var(--bg);
+    color:var(--ink);
+  }
+  input[type=text]:focus{outline:2px solid var(--teal); outline-offset:1px;}
+  select{
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:9px 8px;
+    font-size:12.5px;
+    background:var(--bg);
+    color:var(--ink);
+  }
+  .btn-add{
+    background:var(--teal-deep);
+    color:#fff;
+    border:none;
+    border-radius:10px;
+    padding:9px;
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:600;
+    font-size:13px;
+    cursor:pointer;
+  }
+  .list{display:flex; flex-direction:column; gap:6px; max-height:180px; overflow-y:auto;}
+  .list-item{
+    display:flex; justify-content:space-between; align-items:center;
+    font-size:12.5px;
+    padding:8px 10px;
+    background:var(--bg);
+    border-radius:8px;
+  }
+  .list-item span{font-family:'IBM Plex Mono',monospace;}
+  .list-item button{
+    border:none; background:none; color:var(--danger); font-size:16px; cursor:pointer; line-height:1;
+    padding:0 4px;
+  }
+  .count-pill{
+    font-size:10.5px;
+    color:var(--ink-soft);
+    background:var(--bg);
+    padding:2px 8px;
+    border-radius:20px;
+    margin-left:auto;
+  }
+
+  .save-ref-row{
+    border-top:1px solid var(--line);
+    padding-top:14px;
+    margin-bottom:14px;
+    display:flex;
+    gap:8px;
+  }
+  .save-ref-row input[type=text]{flex:1;}
+  .btn-save-ref{
+    background:var(--teal-deep);
+    color:#fff;
+    border:none;
+    border-radius:10px;
+    padding:9px 14px;
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:600;
+    font-size:12.5px;
+    cursor:pointer;
+    white-space:nowrap;
+  }
+  .btn-save-ref:disabled{opacity:.4;}
+  .sim-badge{
+    display:inline-block;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px;
+    padding:2px 8px;
+    border-radius:20px;
+    background:#FCE9D2;
+    color:#8A5314;
+    margin-left:6px;
+  }
+  .ref-item{
+    display:flex; align-items:center; gap:10px;
+    padding:6px 8px;
+    background:var(--bg);
+    border-radius:8px;
+  }
+  .ref-item img{
+    width:36px; height:44px; object-fit:cover; border-radius:5px; flex-shrink:0;
+    border:1px solid var(--line);
+  }
+  .ref-item .meta{flex:1; min-width:0;}
+  .ref-item .meta b{font-size:12.5px; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .ref-item .meta span{font-size:10.5px; color:var(--ink-soft);}
+  .ref-item button{
+    border:none; background:none; color:var(--danger); font-size:16px; cursor:pointer; padding:0 4px;
+  }
+  .saved-toast{
+    font-size:11.5px;
+    color:var(--safe);
+    margin-top:-6px;
+    margin-bottom:10px;
+    display:none;
+  }
+  .saved-toast.show{display:block;}
+
+  footer{
+    padding:14px 20px 26px;
+    font-size:10.5px;
+    color:var(--ink-soft);
+    text-align:center;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header>
+    <div class="mark">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#7FE0C8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 4h6v6H4z"/><path d="M14 4h6v6h-6z"/><path d="M4 14h6v6H4z"/><path d="M14 15.5 17.5 19 20 14.5"/>
+      </svg>
+    </div>
+    <div>
+      <h1>Cek LASA</h1>
+      <p>Scan kemasan · deteksi risiko obat mirip</p>
+    </div>
+    <button id="refreshBtn" title="Sinkron ulang" style="margin-left:auto; border:1px solid var(--line); background:var(--surface); border-radius:10px; width:34px; height:34px; font-size:15px; cursor:pointer; flex-shrink:0;">⟳</button>
+  </header>
+
+  <div id="syncStatus" style="text-align:center; font-size:11px; color:var(--ink-soft); padding:6px 20px 0;"></div>
+
+  <main>
+    <div class="scan-zone empty" id="scanZone">
+      <img id="preview" style="display:none;">
+      <div class="scanline"></div>
+      <div class="scan-hint">
+        <b>Belum ada foto</b>
+        Ambil atau unggah foto kemasan obat untuk memeriksa apakah termasuk LASA/NORUM
+      </div>
+    </div>
+
+    <div class="actions">
+      <label class="btn btn-primary" for="cameraInput">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        Foto Kemasan
+      </label>
+      <input type="file" id="cameraInput" accept="image/*" capture="environment">
+
+      <label class="btn btn-ghost" for="galleryInput">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+        Galeri
+      </label>
+      <input type="file" id="galleryInput" accept="image/*">
+    </div>
+
+    <div class="status-line" id="statusLine"></div>
+
+    <div class="result" id="resultCard">
+      <div class="result-flag" id="resultFlag">
+        <div class="flag-icon" id="flagIcon"></div>
+        <div class="flag-text">
+          <b id="flagTitle"></b>
+          <span id="flagSub"></span>
+        </div>
+      </div>
+      <div class="result-body">
+        <div class="row-label">Teks terbaca dari kemasan</div>
+        <div class="ocr-box" id="ocrText">—</div>
+        <div id="matchDetail"></div>
+        <div class="save-ref-row">
+          <input type="text" id="refLabel" placeholder="Nama obat untuk disimpan sebagai referensi">
+          <button class="btn-save-ref" id="saveRefBtn">Simpan Kemasan</button>
+        </div>
+        <div class="saved-toast" id="savedToast">✓ Tersimpan sebagai referensi kemasan</div>
+        <div class="note" id="resultNote"></div>
+      </div>
+    </div>
+
+    <div class="manage">
+      <h2>Daftar LASA</h2>
+      <p>Belum punya daftar sendiri — mulai dari contoh umum di bawah ini, lalu tambah/sesuaikan dengan daftar LASA institusimu.</p>
+
+      <div class="manage-form">
+        <div class="fields">
+          <input type="text" id="drugA" placeholder="Nama obat A">
+          <input type="text" id="drugB" placeholder="Nama obat B">
+        </div>
+        <div class="fields">
+          <select id="category">
+            <option value="Ucapan mirip">Ucapan mirip</option>
+            <option value="Kemasan mirip">Kemasan mirip</option>
+            <option value="Kekuatan berbeda">Nama sama, kekuatan beda</option>
+          </select>
+          <button class="btn-add" id="addPair" style="flex-shrink:0; padding:9px 16px;">+ Tambah</button>
+        </div>
+      </div>
+
+      <div style="display:flex; align-items:center; margin-bottom:8px;">
+        <div class="row-label" style="margin:0;">Pasangan tersimpan</div>
+        <span class="count-pill" id="countPill">0</span>
+      </div>
+      <div class="list" id="pairList"></div>
+    </div>
+
+    <div class="manage">
+      <h2>Referensi Kemasan (Foto)</h2>
+      <p>Setiap kali kamu tandai "Simpan Kemasan" pada hasil scan, foto itu jadi acuan visual. Foto berikutnya yang mirip secara desain/warna — walau nama obatnya beda — akan otomatis diflag LASA.</p>
+      <div style="display:flex; align-items:center; margin-bottom:8px;">
+        <div class="row-label" style="margin:0;">Kemasan tersimpan</div>
+        <span class="count-pill" id="refCountPill">0</span>
+      </div>
+      <div class="list" id="refList"></div>
+
+      <div class="save-ref-row" style="border-top:1px solid var(--line); padding-top:14px; margin-top:14px; margin-bottom:0;">
+        <button class="btn-save-ref" id="exportBtn" style="flex:1;">⬇ Ekspor Data</button>
+        <label class="btn-save-ref" for="importInput" style="flex:1; text-align:center; cursor:pointer;">⬆ Impor Data</label>
+        <input type="file" id="importInput" accept="application/json" style="display:none;">
+      </div>
+      <p style="margin-top:10px; margin-bottom:0;">Ekspor untuk membagikan daftar LASA & referensi kemasanmu ke HP/teman lain lewat WhatsApp atau email — mereka tinggal impor filenya.</p>
+    </div>
+  </main>
+
+  <footer>
+    OCR & pencocokan berjalan langsung di perangkat — gratis, tanpa server berbayar.<br>
+    Alat bantu skrining, bukan pengganti verifikasi apoteker.
+  </footer>
+</div>
+
+<script>
+// ---------- Seed data: contoh LASA umum ----------
+const SEED_PAIRS = [
+  ["Allopurinol","Haloperidol","Ucapan mirip"],
+  ["Lasix","Losec","Ucapan mirip"],
+  ["Pranza Injeksi","Esofer Injeksi","Kemasan mirip"],
+  ["Histapan","Heptasan","Kemasan mirip"],
+  ["Norvask 5mg","Norvask 10mg","Kekuatan berbeda"],
+  ["Lyrica 50mg","Lyrica 75mg","Kekuatan berbeda"],
+  ["Asam Mefenamat","Asam Traneksamat","Ucapan mirip"],
+  ["Amlodipine","Nifedipine","Ucapan mirip"],
+  ["Ephedrine","Epinephrine","Ucapan mirip"],
+  ["Chlorpromazine","Chlorpropamide","Ucapan mirip"],
+  ["Nicardipine","Nifedipine","Ucapan mirip"]
+];
+
+let pairs = [];
+const STORE_KEY = "lasa_pairs_v1";
+const REF_KEY = "lasa_photo_refs_v1";
+let refs = [];
+
+// ---------- Google Sheets sebagai database bersama (via Apps Script Web App) ----------
+const API_URL = "https://script.google.com/macros/s/AKfycbx9b6LxSgUpD1_EaNUS8CBK63aGckhZsn2niZskTr5HuyXgR6W9nldv5Xa6xQyXF1M5/exec";
+
+function setSyncStatus(text, isError){
+  const el = document.getElementById("syncStatus");
+  if(!el) return;
+  el.textContent = text;
+  el.style.color = isError ? "var(--danger)" : "var(--ink-soft)";
+}
+
+async function fetchRemote(){
+  const res = await fetch(API_URL, { method: "GET" });
+  if(!res.ok) throw new Error("Gagal mengambil data dari server");
+  return await res.json();
+}
+
+async function pushRemote(){
+  const res = await fetch(API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({ pairs, refs })
+  });
+  if(!res.ok) throw new Error("Gagal menyimpan ke server");
+  return await res.json();
+}
+
+async function loadAll(){
+  setSyncStatus("Memuat data terbaru dari server…", false);
+  try{
+    const data = await fetchRemote();
+    pairs = (data.pairs && data.pairs.length) ? data.pairs : SEED_PAIRS.slice();
+    refs = data.refs || [];
+    try{
+      localStorage.setItem(STORE_KEY, JSON.stringify(pairs));
+      localStorage.setItem(REF_KEY, JSON.stringify(refs));
+    }catch(e){}
+    setSyncStatus("✓ Tersinkron dengan server", false);
+  }catch(e){
+    console.error(e);
+    try{ pairs = JSON.parse(localStorage.getItem(STORE_KEY)) || SEED_PAIRS.slice(); }catch(_){ pairs = SEED_PAIRS.slice(); }
+    try{ refs = JSON.parse(localStorage.getItem(REF_KEY)) || []; }catch(_){ refs = []; }
+    setSyncStatus("⚠ Gagal terhubung ke server — pakai data tersimpan lokal", true);
+  }
+  renderList();
+  renderRefList();
+}
+
+async function syncAll(){
+  try{
+    localStorage.setItem(STORE_KEY, JSON.stringify(pairs));
+    localStorage.setItem(REF_KEY, JSON.stringify(refs));
+  }catch(e){}
+  setSyncStatus("Menyimpan ke server…", false);
+  try{
+    await pushRemote();
+    setSyncStatus("✓ Tersinkron dengan server", false);
+  }catch(e){
+    console.error(e);
+    setSyncStatus("⚠ Gagal sinkron — tersimpan lokal saja", true);
+  }
+}
+
+async function loadPairs(){ /* kept for compatibility, use loadAll() at startup instead */ }
+async function savePairs(){ await syncAll(); }
+async function loadRefs(){ /* kept for compatibility, use loadAll() at startup instead */ }
+async function saveRefs(){ await syncAll(); }
+
+function renderList(){
+  const list = document.getElementById("pairList");
+  const count = document.getElementById("countPill");
+  count.textContent = pairs.length;
+  list.innerHTML = "";
+  pairs.forEach((p, i) => {
+    const div = document.createElement("div");
+    div.className = "list-item";
+    div.innerHTML = `<span>${p[0]} ⇄ ${p[1]} <span style="color:var(--ink-soft); font-family:'Inter',sans-serif; font-size:10.5px;">(${p[2]})</span></span>`;
+    const btn = document.createElement("button");
+    btn.textContent = "✕";
+    btn.onclick = () => { pairs.splice(i,1); syncAll(); renderList(); };
+    div.appendChild(btn);
+    list.appendChild(div);
+  });
+}
+
+document.getElementById("addPair").addEventListener("click", () => {
+  const a = document.getElementById("drugA").value.trim();
+  const b = document.getElementById("drugB").value.trim();
+  const cat = document.getElementById("category").value;
+  if(!a || !b) return;
+  pairs.push([a,b,cat]);
+  document.getElementById("drugA").value = "";
+  document.getElementById("drugB").value = "";
+  syncAll();
+  renderList();
+});
+
+// ---------- Photo reference database (visual/packaging LASA) ----------
+function renderRefList(){
+  const list = document.getElementById("refList");
+  document.getElementById("refCountPill").textContent = refs.length;
+  list.innerHTML = "";
+  refs.forEach((r,i) => {
+    const div = document.createElement("div");
+    div.className = "ref-item";
+    div.innerHTML = `<img src="${r.thumb}"><div class="meta"><b>${r.label}</b><span>disimpan ${new Date(r.ts).toLocaleDateString('id-ID')}</span></div>`;
+    const btn = document.createElement("button");
+    btn.textContent = "✕";
+    btn.onclick = () => { refs.splice(i,1); syncAll(); renderRefList(); };
+    div.appendChild(btn);
+    list.appendChild(div);
+  });
+}
+
+loadAll();
+
+// Compute a small color-grid fingerprint of an image element (downsample = auto-average per cell)
+function getColorSignature(imgEl, w=10, h=12){
+  const canvas = document.createElement("canvas");
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(imgEl, 0, 0, w, h);
+  const data = ctx.getImageData(0,0,w,h).data;
+  const sig = [];
+  for(let i=0;i<data.length;i+=4) sig.push(data[i], data[i+1], data[i+2]);
+  return sig;
+}
+function makeThumb(imgEl, w=90, h=110){
+  const canvas = document.createElement("canvas");
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(imgEl, 0, 0, w, h);
+  return canvas.toDataURL("image/jpeg", 0.6);
+}
+function sigSimilarity(a,b){
+  let sumSq = 0;
+  for(let i=0;i<a.length;i++){ const d=a[i]-b[i]; sumSq += d*d; }
+  const dist = Math.sqrt(sumSq);
+  const maxDist = Math.sqrt(a.length * 255 * 255);
+  return 1 - dist/maxDist;
+}
+const VISUAL_THRESHOLD = 0.70;
+function findVisualMatch(signature){
+  let best = null;
+  refs.forEach(r => {
+    const s = sigSimilarity(signature, r.signature);
+    if(s >= VISUAL_THRESHOLD && (!best || s > best.score)){
+      best = { label: r.label, score: s };
+    }
+  });
+  return best;
+}
+
+// ---------- Fuzzy matching ----------
+function normalize(s){
+  return s.toLowerCase().replace(/[^a-z0-9\s]/g,"").replace(/\s+/g," ").trim();
+}
+
+function levenshtein(a,b){
+  const m = a.length, n = b.length;
+  const dp = Array.from({length:m+1},()=>new Array(n+1).fill(0));
+  for(let i=0;i<=m;i++) dp[i][0]=i;
+  for(let j=0;j<=n;j++) dp[0][j]=j;
+  for(let i=1;i<=m;i++){
+    for(let j=1;j<=n;j++){
+      dp[i][j] = a[i-1]===b[j-1] ? dp[i-1][j-1] : 1+Math.min(dp[i-1][j-1],dp[i-1][j],dp[i][j-1]);
+    }
+  }
+  return dp[m][n];
+}
+
+function similarity(a,b){
+  const na = normalize(a), nb = normalize(b);
+  const dist = levenshtein(na, nb);
+  const maxLen = Math.max(na.length, nb.length) || 1;
+  return 1 - dist/maxLen;
+}
+
+// finds best matching pair given OCR text (checks if any known drug name appears / is similar within the text)
+function findLasaMatch(ocrText){
+  const normText = normalize(ocrText);
+  let best = null;
+  pairs.forEach(([a,b,cat]) => {
+    [[a,b],[b,a]].forEach(([drug, partner]) => {
+      const nd = normalize(drug);
+      // direct substring hit
+      let score = normText.includes(nd) ? 1 : 0;
+      if(score === 0){
+        // sliding window fuzzy match against words/phrases in text
+        const words = normText.split(" ");
+        for(let w=1; w<=3; w++){
+          for(let i=0;i+w<=words.length;i++){
+            const chunk = words.slice(i,i+w).join(" ");
+            const s = similarity(chunk, nd);
+            if(s > score) score = s;
+          }
+        }
+      }
+      if(score >= 0.72 && (!best || score > best.score)){
+        best = {matched: drug, partner, category: cat, score};
+      }
+    });
+  });
+  return best;
+}
+
+function highlightDiff(a,b){
+  // simple char-level diff highlight (tall-man style) for same-length-ish strings
+  const maxLen = Math.max(a.length, b.length);
+  let outA = "", outB = "";
+  for(let i=0;i<maxLen;i++){
+    const ca = a[i] || "", cb = b[i] || "";
+    if(ca.toLowerCase() === cb.toLowerCase()){
+      outA += ca; outB += cb;
+    } else {
+      outA += ca ? `<mark>${ca}</mark>` : "";
+      outB += cb ? `<mark>${cb}</mark>` : "";
+    }
+  }
+  return [outA, outB];
+}
+
+// ---------- Camera / OCR flow ----------
+const scanZone = document.getElementById("scanZone");
+const preview = document.getElementById("preview");
+const statusLine = document.getElementById("statusLine");
+const resultCard = document.getElementById("resultCard");
+
+let currentSignature = null;
+let currentThumb = null;
+
+async function handleFile(file){
+  if(!file) return;
+  const url = URL.createObjectURL(file);
+  preview.src = url;
+  preview.style.display = "block";
+  scanZone.classList.remove("empty");
+  scanZone.classList.add("scanning");
+  resultCard.classList.remove("show");
+  document.getElementById("savedToast").classList.remove("show");
+  statusLine.textContent = "Membaca teks kemasan (OCR)…";
+
+  await new Promise(res => {
+    if(preview.complete) res(); else preview.onload = res;
+  });
+  currentSignature = getColorSignature(preview);
+  currentThumb = makeThumb(preview);
+
+  try{
+    const { data: { text } } = await Tesseract.recognize(file, "eng", {
+      logger: m => {
+        if(m.status === "recognizing text"){
+          statusLine.textContent = `Membaca teks kemasan… ${(m.progress*100).toFixed(0)}%`;
+        }
+      }
+    });
+    scanZone.classList.remove("scanning");
+    statusLine.textContent = "";
+    showResult(text);
+  }catch(e){
+    scanZone.classList.remove("scanning");
+    statusLine.textContent = "Gagal membaca gambar, coba foto lebih jelas/terang.";
+    console.error(e);
+  }
+}
+
+function bestGuessName(cleaned){
+  // heuristic: longest alphabetic token, likely the drug's brand/generic name
+  const tokens = cleaned.split(/[^a-zA-Z]+/).filter(t => t.length >= 4);
+  tokens.sort((a,b) => b.length - a.length);
+  return tokens[0] || cleaned.slice(0,20);
+}
+
+function showResult(rawText){
+  const cleaned = rawText.replace(/\s+/g," ").trim() || "(tidak ada teks terbaca)";
+  document.getElementById("ocrText").textContent = cleaned;
+
+  const textMatch = findLasaMatch(cleaned);
+  const visualMatch = currentSignature ? findVisualMatch(currentSignature) : null;
+
+  const flag = document.getElementById("resultFlag");
+  const icon = document.getElementById("flagIcon");
+  const title = document.getElementById("flagTitle");
+  const sub = document.getElementById("flagSub");
+  const detail = document.getElementById("matchDetail");
+  const note = document.getElementById("resultNote");
+
+  // Ignore visual match if it's essentially the same drug name (re-scanning the same product)
+  let effectiveVisual = visualMatch;
+  if(visualMatch){
+    const nameSim = similarity(cleaned, visualMatch.label);
+    if(nameSim >= 0.55) effectiveVisual = null; // likely same product, not a LASA pair
+  }
+
+  const guessName = bestGuessName(cleaned);
+  document.getElementById("refLabel").value = guessName;
+
+  let blocks = "";
+  const isLasa = textMatch || effectiveVisual;
+
+  if(textMatch){
+    const [ha, hb] = highlightDiff(textMatch.matched, textMatch.partner);
+    blocks += `
+      <span class="cat-tag">${textMatch.category}</span>
+      <div class="compare">
+        <div class="compare-pair">${ha}<span class="vs">terbaca</span></div>
+        <div class="compare-pair">${hb}<span class="vs">mirip dgn</span></div>
+      </div>`;
+  }
+  if(effectiveVisual){
+    blocks += `
+      <span class="cat-tag">Kemasan mirip (visual) <span class="sim-badge">${(effectiveVisual.score*100).toFixed(0)}% mirip</span></span>
+      <div class="compare">
+        <div class="compare-pair">${guessName}<span class="vs">terbaca</span></div>
+        <div class="compare-pair">${effectiveVisual.label}<span class="vs">kemasan mirip</span></div>
+      </div>`;
+  }
+
+  if(isLasa){
+    flag.className = "result-flag lasa";
+    icon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
+    title.textContent = "Terindikasi LASA";
+    sub.textContent = textMatch && effectiveVisual ? "Mirip nama & kemasan" : (textMatch ? `Mirip dengan "${textMatch.partner}"` : `Kemasan mirip dengan "${effectiveVisual.label}"`);
+    detail.innerHTML = blocks;
+    note.textContent = "Periksa ulang nama, kekuatan, dan bentuk sediaan sebelum menyerahkan/mengonsumsi obat. Jangan simpan berdekatan dengan pasangannya.";
+  }else{
+    flag.className = "result-flag aman";
+    icon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`;
+    title.textContent = "Tidak cocok dengan daftar LASA";
+    sub.textContent = "Berdasarkan daftar nama & kemasan yang tersimpan saat ini";
+    detail.innerHTML = "";
+    note.textContent = "Ini bukan jaminan obat aman — hasil hanya dibandingkan dengan daftar & referensi kemasan yang kamu simpan di aplikasi ini.";
+  }
+  resultCard.classList.add("show");
+}
+
+document.getElementById("refreshBtn").addEventListener("click", () => {
+  loadAll();
+});
+
+document.getElementById("saveRefBtn").addEventListener("click", () => {
+  const label = document.getElementById("refLabel").value.trim();
+  if(!label || !currentSignature || !currentThumb) return;
+  refs.push({ id: Date.now().toString(), label, signature: currentSignature, thumb: currentThumb, ts: Date.now() });
+  syncAll();
+  renderRefList();
+  const toast = document.getElementById("savedToast");
+  toast.classList.add("show");
+  setTimeout(() => toast.classList.remove("show"), 2500);
+});
+
+// ---------- Export / Import (untuk berbagi database antar HP, gratis, tanpa server) ----------
+document.getElementById("exportBtn").addEventListener("click", () => {
+  const payload = { pairs, refs, exportedAt: new Date().toISOString() };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `lasa-data-${new Date().toISOString().slice(0,10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+});
+
+document.getElementById("importInput").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if(!file) return;
+  try{
+    const text = await file.text();
+    const data = JSON.parse(text);
+    if(Array.isArray(data.pairs)) pairs = data.pairs;
+    if(Array.isArray(data.refs)) refs = data.refs;
+    await syncAll();
+    renderList();
+    renderRefList();
+    statusLine.textContent = "Data berhasil diimpor dan disinkron ke server.";
+    setTimeout(() => statusLine.textContent = "", 3000);
+  }catch(err){
+    statusLine.textContent = "Gagal mengimpor file — pastikan format JSON benar.";
+    console.error(err);
+  }
+  e.target.value = "";
+});
+
+document.getElementById("cameraInput").addEventListener("change", e => handleFile(e.target.files[0]));
+document.getElementById("galleryInput").addEventListener("change", e => handleFile(e.target.files[0]));
+</script>
+</body>
+</html>
