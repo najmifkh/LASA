@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Cek LASA — Scanner Obat</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
@@ -162,32 +162,42 @@
     min-height:16px;
   }
 
-  /* Modal Crop yang sudah diperbaiki */
+  /* MODAL CROP - FIXED (100% Anti Membesar & Nge-Zoom) */
   .crop-modal {
-    position: fixed; inset: 0; background: #000; z-index: 9999;
+    position: fixed; inset: 0; 
+    background: #000; z-index: 9999;
     display: none; flex-direction: column;
+    height: 100vh; /* Kunci ukuran layar */
   }
   .crop-modal.show { display: flex; }
+  
   .crop-header {
     padding: 16px 20px; display: flex; justify-content: space-between; align-items: center;
-    background: #111; border-bottom: 1px solid #333;
+    background: #111; border-bottom: 1px solid #333; flex-shrink: 0;
   }
   .crop-header h2 { font-family: 'Space Grotesk', sans-serif; font-size: 16px; margin: 0; color: #fff; }
+  
   .crop-body { 
     flex: 1; 
     width: 100%; 
-    display: flex; 
-    align-items: center; 
-    justify-content: center; 
-    overflow: hidden; 
+    min-height: 0; /* INI KUNCI AGAR FLEBOX TIDAK JEBOL OLEH GAMBAR BESAR */
     background: #000; 
+    position: relative;
   }
-  .crop-body img { 
-    max-width: 100%; 
-    max-height: 70vh; /* Mencegah gambar membesar keluar layar */
+  .img-container {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .img-container img { 
     display: block; 
+    max-width: 100%; 
+    max-height: 100%; 
   }
-  .crop-footer { padding: 16px 20px; background: #111; }
+  
+  .crop-footer { padding: 16px 20px; background: #111; flex-shrink: 0; }
 
   /* Result card */
   .result{
@@ -433,7 +443,9 @@
     <button id="btnCancelCrop" style="background:none; border:none; color:#B23A3A; font-size:14px; font-weight:600; cursor:pointer;">Batal</button>
   </div>
   <div class="crop-body">
-    <img id="imageToCrop" src="">
+    <div class="img-container">
+      <img id="imageToCrop" src="">
+    </div>
   </div>
   <div class="crop-footer">
     <button id="btnConfirmCrop" class="btn btn-primary" style="width:100%;">Potong & Scan</button>
@@ -441,7 +453,6 @@
 </div>
 
 <div class="app">
-
   <header>
     <div class="mark">
       <svg viewBox="0 0 24 24" fill="none" stroke="#7FE0C8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -507,7 +518,6 @@
     <div class="manage">
       <h2>Daftar LASA</h2>
       <p>Belum punya daftar sendiri — mulai dari contoh umum di bawah ini, lalu tambah/sesuaikan dengan daftar LASA institusimu.</p>
-
       <div class="manage-form">
         <div class="fields">
           <input type="text" id="drugA" placeholder="Nama obat A">
@@ -522,7 +532,6 @@
           <button class="btn-add" id="addPair" style="flex-shrink:0; padding:9px 16px;">+ Tambah</button>
         </div>
       </div>
-
       <div style="display:flex; align-items:center; margin-bottom:8px;">
         <div class="row-label" style="margin:0;">Pasangan tersimpan</div>
         <span class="count-pill" id="countPill">0</span>
@@ -555,7 +564,7 @@
 </div>
 
 <script>
-// ---------- Seed data: contoh LASA umum ----------
+// ---------- Seed data & Config ----------
 const SEED_PAIRS = [
   ["Allopurinol","Haloperidol","Ucapan mirip"],
   ["Lasix","Losec","Ucapan mirip"],
@@ -574,9 +583,8 @@ let pairs = [];
 const STORE_KEY = "lasa_pairs_v1";
 const REF_KEY = "lasa_photo_refs_v1";
 let refs = [];
-let cropper = null; // Variabel penampung Cropper.js
+let cropper = null;
 
-// ---------- Google Sheets sebagai database bersama (via Apps Script Web App) ----------
 const API_URL = "https://script.google.com/macros/s/AKfycbx9b6LxSgUpD1_EaNUS8CBK63aGckhZsn2niZskTr5HuyXgR6W9nldv5Xa6xQyXF1M5/exec";
 
 function setSyncStatus(text, isError){
@@ -614,7 +622,6 @@ async function loadAll(){
     }catch(e){}
     setSyncStatus("✓ Tersinkron dengan server", false);
   }catch(e){
-    console.error(e);
     try{ pairs = JSON.parse(localStorage.getItem(STORE_KEY)) || SEED_PAIRS.slice(); }catch(_){ pairs = SEED_PAIRS.slice(); }
     try{ refs = JSON.parse(localStorage.getItem(REF_KEY)) || []; }catch(_){ refs = []; }
     setSyncStatus("⚠ Gagal terhubung ke server — pakai data tersimpan lokal", true);
@@ -633,7 +640,6 @@ async function syncAll(){
     await pushRemote();
     setSyncStatus("✓ Tersinkron dengan server", false);
   }catch(e){
-    console.error(e);
     setSyncStatus("⚠ Gagal sinkron — tersimpan lokal saja", true);
   }
 }
@@ -667,7 +673,6 @@ document.getElementById("addPair").addEventListener("click", () => {
   renderList();
 });
 
-// ---------- Photo reference database (visual/packaging LASA) ----------
 function renderRefList(){
   const list = document.getElementById("refList");
   document.getElementById("refCountPill").textContent = refs.length;
@@ -686,7 +691,6 @@ function renderRefList(){
 
 loadAll();
 
-// Fungsi untuk Color Signature (menggunakan hasil potongan/crop)
 function getColorSignature(imgEl, w=10, h=12){
   const canvas = document.createElement("canvas");
   canvas.width = w; canvas.height = h;
@@ -724,7 +728,6 @@ function findVisualMatch(signature){
   return best;
 }
 
-// ---------- Fuzzy matching ----------
 function normalize(s){
   return s.toLowerCase().replace(/[^a-z0-9\s]/g,"").replace(/\s+/g," ").trim();
 }
@@ -789,7 +792,6 @@ function highlightDiff(a,b){
   return [outA, outB];
 }
 
-// ---------- Camera / OCR / Cropper flow ----------
 const scanZone = document.getElementById("scanZone");
 const preview = document.getElementById("preview");
 const statusLine = document.getElementById("statusLine");
@@ -798,30 +800,32 @@ const resultCard = document.getElementById("resultCard");
 let currentSignature = null;
 let currentThumb = null;
 
-// Fungsi 1: Membuka Modal Crop dan Menyiapkan Gambar
+// ---------- FUNGSI CROP YANG SUDAH DIPERBAIKI ----------
 async function handleFile(file){
   if(!file) return;
   
   const cropModal = document.getElementById("cropModal");
   const imageToCrop = document.getElementById("imageToCrop");
   
+  // Tampilkan UI modalnya dulu
   cropModal.classList.add("show");
   
-  // Bersihkan cropper lama jika ada
   if(cropper) {
     cropper.destroy();
     cropper = null;
   }
   
-  // Set inisialisasi Cropper dengan Jeda (Timeout) agar tidak error/membesar
   imageToCrop.onload = () => {
+    // Beri jeda agak lama sedikit agar rendering HP benar-benar selesai
     setTimeout(() => {
       cropper = new Cropper(imageToCrop, {
-        viewMode: 1,
+        viewMode: 1, 
         dragMode: 'crop',
-        autoCropArea: 0.9,
+        autoCropArea: 0.8,
         background: false, // Menghilangkan background kotak-kotak
-        zoomable: false,   // Mematikan fitur zoom agar gambar tidak meleset
+        zoomable: false,   // Kunci agar tidak nge-zoom
+        movable: false,    // Kunci agar gambar utama tidak geser
+        responsive: true,
         restore: false,
         guides: true,
         center: true,
@@ -830,17 +834,15 @@ async function handleFile(file){
         cropBoxResizable: true,
         toggleDragModeOnDblclick: false,
       });
-    }, 100);
+    }, 150);
   };
   
   imageToCrop.src = URL.createObjectURL(file);
   
-  // Reset input agar pengguna bisa memfoto ulang dengan file yang sama
   document.getElementById("cameraInput").value = "";
   document.getElementById("galleryInput").value = "";
 }
 
-// Tombol Batal Crop
 document.getElementById("btnCancelCrop").addEventListener("click", () => {
   document.getElementById("cropModal").classList.remove("show");
   if(cropper) {
@@ -849,29 +851,36 @@ document.getElementById("btnCancelCrop").addEventListener("click", () => {
   }
 });
 
-// Tombol Potong & Scan (Sudah dilengkapi pembatas resolusi agar HP tidak hang)
+// Tombol Potong dilindungi try-catch agar tahu kalau ada error
 document.getElementById("btnConfirmCrop").addEventListener("click", () => {
-  if(!cropper) return;
-  
-  // Dapatkan hasil potongan dengan resolusi maksimal yang aman
-  const canvas = cropper.getCroppedCanvas({
-    maxWidth: 1024,
-    maxHeight: 1024
-  });
-  
-  if (!canvas) {
-    alert("Gagal memotong gambar. Silakan coba foto ulang.");
-    return;
+  try {
+    if(!cropper) {
+      alert("Memuat gambar... Silakan tunggu sebentar.");
+      return;
+    }
+    
+    // Potong dengan batas wajar
+    const canvas = cropper.getCroppedCanvas({
+      maxWidth: 1024,
+      maxHeight: 1024
+    });
+    
+    if (!canvas) {
+      alert("Gagal memotong. Coba tarik kotaknya lebih lebar sedikit.");
+      return;
+    }
+    
+    document.getElementById("cropModal").classList.remove("show");
+    cropper.destroy();
+    cropper = null;
+    
+    startScan(canvas);
+  } catch (err) {
+    alert("Terjadi kendala saat memotong: " + err.message);
   }
-  
-  document.getElementById("cropModal").classList.remove("show");
-  cropper.destroy();
-  cropper = null;
-  
-  startScan(canvas);
 });
 
-// Fungsi 2: Memulai Scan OCR
+// ---------- MULAII SCAN ----------
 async function startScan(canvas){
   canvas.toBlob(async (blob) => {
     const url = URL.createObjectURL(blob);
@@ -905,7 +914,6 @@ async function startScan(canvas){
     }catch(e){
       scanZone.classList.remove("scanning");
       statusLine.textContent = "Gagal membaca gambar, coba foto lebih jelas/terang.";
-      console.error(e);
     }
   }, 'image/jpeg');
 }
@@ -1022,7 +1030,6 @@ document.getElementById("importInput").addEventListener("change", async (e) => {
     setTimeout(() => statusLine.textContent = "", 3000);
   }catch(err){
     statusLine.textContent = "Gagal mengimpor file — pastikan format JSON benar.";
-    console.error(err);
   }
   e.target.value = "";
 });
