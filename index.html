@@ -173,8 +173,20 @@
     border-bottom: 1px solid var(--line); background: var(--surface);
   }
   .crop-header h2 { font-family: 'Space Grotesk', sans-serif; font-size: 16px; margin: 0; }
-  .crop-body { flex: 1; background: #000; display: flex; align-items: center; justify-content: center; }
-  .crop-body img { max-width: 100%; max-height: 100%; display: block; }
+  .crop-body { 
+    flex: 1; 
+    background: #000; 
+    display: flex; 
+    align-items: center; 
+    justify-content: center; 
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+  }
+  .crop-body img { 
+    max-width: 100%; 
+    display: block; 
+  }
   .crop-footer { padding: 16px 20px; background: var(--surface); }
 
   /* Result card */
@@ -793,7 +805,7 @@ async function handleFile(file){
   const cropModal = document.getElementById("cropModal");
   const imageToCrop = document.getElementById("imageToCrop");
   
-  // Tampilkan modal terlebih dahulu agar Cropper bisa mengukur dimensinya
+  // 1. Munculkan modalnya terlebih dahulu
   cropModal.classList.add("show");
   
   // Hapus instance cropper lama jika ada
@@ -802,24 +814,30 @@ async function handleFile(file){
     cropper = null;
   }
   
-  // PENTING: Pasang fungsi deteksi gambar (onload) SEBELUM memasukkan URL gambar
   imageToCrop.onload = () => {
-    cropper = new Cropper(imageToCrop, {
-      viewMode: 1,
-      dragMode: 'crop',
-      autoCropArea: 0.8,
-      restore: false,
-      guides: true,
-      center: true,
-      highlight: false,
-      cropBoxMovable: true,
-      cropBoxResizable: true,
-      toggleDragModeOnDblclick: false,
-    });
+    // 2. Beri jeda 100 milidetik agar modal selesai dirender 100% oleh browser
+    setTimeout(() => {
+      cropper = new Cropper(imageToCrop, {
+        viewMode: 1, // Membatasi area crop agar tidak keluar dari gambar
+        dragMode: 'crop',
+        autoCropArea: 0.8,
+        restore: false,
+        guides: true,
+        center: true,
+        highlight: false,
+        cropBoxMovable: true,
+        cropBoxResizable: true,
+        toggleDragModeOnDblclick: false,
+      });
+    }, 100); // <--- Jeda waktu ini yang akan memperbaiki tampilan "aneh" tersebut
   };
   
-  // Masukkan sumber gambarnya di akhir
+  // Masukkan gambar
   imageToCrop.src = URL.createObjectURL(file);
+  
+  // Kosongkan input agar kamu bisa memilih foto yang sama jika batal
+  document.getElementById("cameraInput").value = "";
+  document.getElementById("galleryInput").value = "";
 }
 
 // Fungsi 2: Proses OCR dan Color Signature dari gambar hasil Crop
