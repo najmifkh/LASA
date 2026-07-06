@@ -180,9 +180,10 @@
   .crop-body { 
     flex: 1; 
     width: 100%; 
-    min-height: 0; /* INI KUNCI AGAR FLEBOX TIDAK JEBOL OLEH GAMBAR BESAR */
+    height: calc(100vh - 140px) !important; 
     background: #000; 
     position: relative;
+    overflow: hidden;
   }
   .img-container {
     width: 100%;
