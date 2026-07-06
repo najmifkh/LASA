@@ -2,15 +2,11 @@
 <html lang="id">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Cek LASA — Scanner Obat</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-<!-- Tambahan Library untuk OCR dan Cropper -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js"></script>
-<link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-
 <style>
   :root{
     --bg: #F4F7F6;
@@ -161,44 +157,6 @@
     text-align:center;
     min-height:16px;
   }
-
-  /* MODAL CROP - FIXED (100% Anti Membesar & Nge-Zoom) */
-  .crop-modal {
-    position: fixed; inset: 0; 
-    background: #000; z-index: 9999;
-    display: none; flex-direction: column;
-    height: 100vh; /* Kunci ukuran layar */
-  }
-  .crop-modal.show { display: flex; }
-  
-  .crop-header {
-    padding: 16px 20px; display: flex; justify-content: space-between; align-items: center;
-    background: #111; border-bottom: 1px solid #333; flex-shrink: 0;
-  }
-  .crop-header h2 { font-family: 'Space Grotesk', sans-serif; font-size: 16px; margin: 0; color: #fff; }
-  
-  .crop-body { 
-    flex: 1; 
-    width: 100%; 
-    height: calc(100vh - 140px) !important; 
-    background: #000; 
-    position: relative;
-    overflow: hidden;
-  }
-  .img-container {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .img-container img { 
-    display: block; 
-    max-width: 100%; 
-    max-height: 100%; 
-  }
-  
-  .crop-footer { padding: 16px 20px; background: #111; flex-shrink: 0; }
 
   /* Result card */
   .result{
@@ -436,24 +394,8 @@
 </style>
 </head>
 <body>
-
-<!-- Modal Crop Element -->
-<div id="cropModal" class="crop-modal">
-  <div class="crop-header">
-    <h2>Potong Area Obat</h2>
-    <button id="btnCancelCrop" style="background:none; border:none; color:#B23A3A; font-size:14px; font-weight:600; cursor:pointer;">Batal</button>
-  </div>
-  <div class="crop-body">
-    <div class="img-container">
-      <img id="imageToCrop" src="">
-    </div>
-  </div>
-  <div class="crop-footer">
-    <button id="btnConfirmCrop" class="btn btn-primary" style="width:100%;">Potong & Scan</button>
-  </div>
-</div>
-
 <div class="app">
+
   <header>
     <div class="mark">
       <svg viewBox="0 0 24 24" fill="none" stroke="#7FE0C8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -519,6 +461,7 @@
     <div class="manage">
       <h2>Daftar LASA</h2>
       <p>Belum punya daftar sendiri — mulai dari contoh umum di bawah ini, lalu tambah/sesuaikan dengan daftar LASA institusimu.</p>
+
       <div class="manage-form">
         <div class="fields">
           <input type="text" id="drugA" placeholder="Nama obat A">
@@ -533,6 +476,7 @@
           <button class="btn-add" id="addPair" style="flex-shrink:0; padding:9px 16px;">+ Tambah</button>
         </div>
       </div>
+
       <div style="display:flex; align-items:center; margin-bottom:8px;">
         <div class="row-label" style="margin:0;">Pasangan tersimpan</div>
         <span class="count-pill" id="countPill">0</span>
@@ -565,7 +509,7 @@
 </div>
 
 <script>
-// ---------- Seed data & Config ----------
+// ---------- Seed data: contoh LASA umum ----------
 const SEED_PAIRS = [
   ["Allopurinol","Haloperidol","Ucapan mirip"],
   ["Lasix","Losec","Ucapan mirip"],
@@ -584,8 +528,8 @@ let pairs = [];
 const STORE_KEY = "lasa_pairs_v1";
 const REF_KEY = "lasa_photo_refs_v1";
 let refs = [];
-let cropper = null;
 
+// ---------- Google Sheets sebagai database bersama (via Apps Script Web App) ----------
 const API_URL = "https://script.google.com/macros/s/AKfycbx9b6LxSgUpD1_EaNUS8CBK63aGckhZsn2niZskTr5HuyXgR6W9nldv5Xa6xQyXF1M5/exec";
 
 function setSyncStatus(text, isError){
@@ -623,6 +567,7 @@ async function loadAll(){
     }catch(e){}
     setSyncStatus("✓ Tersinkron dengan server", false);
   }catch(e){
+    console.error(e);
     try{ pairs = JSON.parse(localStorage.getItem(STORE_KEY)) || SEED_PAIRS.slice(); }catch(_){ pairs = SEED_PAIRS.slice(); }
     try{ refs = JSON.parse(localStorage.getItem(REF_KEY)) || []; }catch(_){ refs = []; }
     setSyncStatus("⚠ Gagal terhubung ke server — pakai data tersimpan lokal", true);
@@ -641,9 +586,15 @@ async function syncAll(){
     await pushRemote();
     setSyncStatus("✓ Tersinkron dengan server", false);
   }catch(e){
+    console.error(e);
     setSyncStatus("⚠ Gagal sinkron — tersimpan lokal saja", true);
   }
 }
+
+async function loadPairs(){ /* kept for compatibility, use loadAll() at startup instead */ }
+async function savePairs(){ await syncAll(); }
+async function loadRefs(){ /* kept for compatibility, use loadAll() at startup instead */ }
+async function saveRefs(){ await syncAll(); }
 
 function renderList(){
   const list = document.getElementById("pairList");
@@ -674,6 +625,7 @@ document.getElementById("addPair").addEventListener("click", () => {
   renderList();
 });
 
+// ---------- Photo reference database (visual/packaging LASA) ----------
 function renderRefList(){
   const list = document.getElementById("refList");
   document.getElementById("refCountPill").textContent = refs.length;
@@ -692,6 +644,7 @@ function renderRefList(){
 
 loadAll();
 
+// Compute a small color-grid fingerprint of an image element (downsample = auto-average per cell)
 function getColorSignature(imgEl, w=10, h=12){
   const canvas = document.createElement("canvas");
   canvas.width = w; canvas.height = h;
@@ -712,19 +665,12 @@ function makeThumb(imgEl, w=90, h=110){
 }
 function sigSimilarity(a,b){
   let sumSq = 0;
-  for(let i=0;i<a.length;i++){ 
-    const d = a[i] - b[i]; 
-    sumSq += d*d; 
-  }
+  for(let i=0;i<a.length;i++){ const d=a[i]-b[i]; sumSq += d*d; }
   const dist = Math.sqrt(sumSq);
-  
-  const avgDistPerChannel = dist / Math.sqrt(a.length);
-  
-  let sim = 1 - (avgDistPerChannel / 100);
-  
-  return sim < 0 ? 0 : sim;
+  const maxDist = Math.sqrt(a.length * 255 * 255);
+  return 1 - dist/maxDist;
 }
-const VISUAL_THRESHOLD = 0.75;
+const VISUAL_THRESHOLD = 0.70;
 function findVisualMatch(signature){
   let best = null;
   refs.forEach(r => {
@@ -736,6 +682,7 @@ function findVisualMatch(signature){
   return best;
 }
 
+// ---------- Fuzzy matching ----------
 function normalize(s){
   return s.toLowerCase().replace(/[^a-z0-9\s]/g,"").replace(/\s+/g," ").trim();
 }
@@ -760,14 +707,17 @@ function similarity(a,b){
   return 1 - dist/maxLen;
 }
 
+// finds best matching pair given OCR text (checks if any known drug name appears / is similar within the text)
 function findLasaMatch(ocrText){
   const normText = normalize(ocrText);
   let best = null;
   pairs.forEach(([a,b,cat]) => {
     [[a,b],[b,a]].forEach(([drug, partner]) => {
       const nd = normalize(drug);
+      // direct substring hit
       let score = normText.includes(nd) ? 1 : 0;
       if(score === 0){
+        // sliding window fuzzy match against words/phrases in text
         const words = normText.split(" ");
         for(let w=1; w<=3; w++){
           for(let i=0;i+w<=words.length;i++){
@@ -786,6 +736,7 @@ function findLasaMatch(ocrText){
 }
 
 function highlightDiff(a,b){
+  // simple char-level diff highlight (tall-man style) for same-length-ish strings
   const maxLen = Math.max(a.length, b.length);
   let outA = "", outB = "";
   for(let i=0;i<maxLen;i++){
@@ -800,6 +751,7 @@ function highlightDiff(a,b){
   return [outA, outB];
 }
 
+// ---------- Camera / OCR flow ----------
 const scanZone = document.getElementById("scanZone");
 const preview = document.getElementById("preview");
 const statusLine = document.getElementById("statusLine");
@@ -808,125 +760,43 @@ const resultCard = document.getElementById("resultCard");
 let currentSignature = null;
 let currentThumb = null;
 
-// ---------- FUNGSI CROP YANG SUDAH DIPERBAIKI ----------
 async function handleFile(file){
   if(!file) return;
-  
-  const cropModal = document.getElementById("cropModal");
-  const imageToCrop = document.getElementById("imageToCrop");
-  
-  // Tampilkan UI modalnya dulu
-  cropModal.classList.add("show");
-  
-  if(cropper) {
-    cropper.destroy();
-    cropper = null;
-  }
-  
-  imageToCrop.onload = () => {
-    // Beri jeda agak lama sedikit agar rendering HP benar-benar selesai
-    setTimeout(() => {
-      cropper = new Cropper(imageToCrop, {
-        viewMode: 1, 
-        dragMode: 'crop',
-        autoCropArea: 0.8,
-        background: false, // Menghilangkan background kotak-kotak
-        zoomable: false,   // Kunci agar tidak nge-zoom
-        movable: false,    // Kunci agar gambar utama tidak geser
-        responsive: true,
-        restore: false,
-        guides: true,
-        center: true,
-        highlight: false,
-        cropBoxMovable: true,
-        cropBoxResizable: true,
-        toggleDragModeOnDblclick: false,
-      });
-    }, 150);
-  };
-  
-  imageToCrop.src = URL.createObjectURL(file);
-  
-  document.getElementById("cameraInput").value = "";
-  document.getElementById("galleryInput").value = "";
-}
+  const url = URL.createObjectURL(file);
+  preview.src = url;
+  preview.style.display = "block";
+  scanZone.classList.remove("empty");
+  scanZone.classList.add("scanning");
+  resultCard.classList.remove("show");
+  document.getElementById("savedToast").classList.remove("show");
+  statusLine.textContent = "Membaca teks kemasan (OCR)…";
 
-document.getElementById("btnCancelCrop").addEventListener("click", () => {
-  document.getElementById("cropModal").classList.remove("show");
-  if(cropper) {
-    cropper.destroy();
-    cropper = null;
-  }
-});
+  await new Promise(res => {
+    if(preview.complete) res(); else preview.onload = res;
+  });
+  currentSignature = getColorSignature(preview);
+  currentThumb = makeThumb(preview);
 
-// Tombol Potong dilindungi try-catch agar tahu kalau ada error
-document.getElementById("btnConfirmCrop").addEventListener("click", () => {
-  try {
-    if(!cropper) {
-      alert("Memuat gambar... Silakan tunggu sebentar.");
-      return;
-    }
-    
-    // Potong dengan batas wajar
-    const canvas = cropper.getCroppedCanvas({
-      maxWidth: 1024,
-      maxHeight: 1024
-    });
-    
-    if (!canvas) {
-      alert("Gagal memotong. Coba tarik kotaknya lebih lebar sedikit.");
-      return;
-    }
-    
-    document.getElementById("cropModal").classList.remove("show");
-    cropper.destroy();
-    cropper = null;
-    
-    startScan(canvas);
-  } catch (err) {
-    alert("Terjadi kendala saat memotong: " + err.message);
-  }
-});
-
-// ---------- MULAII SCAN ----------
-async function startScan(canvas){
-  canvas.toBlob(async (blob) => {
-    const url = URL.createObjectURL(blob);
-    
-    preview.src = url;
-    preview.style.display = "block";
-    scanZone.classList.remove("empty");
-    scanZone.classList.add("scanning");
-    resultCard.classList.remove("show");
-    document.getElementById("savedToast").classList.remove("show");
-    statusLine.textContent = "Membaca teks kemasan (OCR)…";
-
-    await new Promise(res => {
-      if(preview.complete) res(); else preview.onload = res;
-    });
-    
-    currentSignature = getColorSignature(preview);
-    currentThumb = makeThumb(preview);
-
-    try{
-      const { data: { text } } = await Tesseract.recognize(blob, "eng", {
-        logger: m => {
-          if(m.status === "recognizing text"){
-            statusLine.textContent = `Membaca teks kemasan… ${(m.progress*100).toFixed(0)}%`;
-          }
+  try{
+    const { data: { text } } = await Tesseract.recognize(file, "eng", {
+      logger: m => {
+        if(m.status === "recognizing text"){
+          statusLine.textContent = `Membaca teks kemasan… ${(m.progress*100).toFixed(0)}%`;
         }
-      });
-      scanZone.classList.remove("scanning");
-      statusLine.textContent = "";
-      showResult(text);
-    }catch(e){
-      scanZone.classList.remove("scanning");
-      statusLine.textContent = "Gagal membaca gambar, coba foto lebih jelas/terang.";
-    }
-  }, 'image/jpeg');
+      }
+    });
+    scanZone.classList.remove("scanning");
+    statusLine.textContent = "";
+    showResult(text);
+  }catch(e){
+    scanZone.classList.remove("scanning");
+    statusLine.textContent = "Gagal membaca gambar, coba foto lebih jelas/terang.";
+    console.error(e);
+  }
 }
 
 function bestGuessName(cleaned){
+  // heuristic: longest alphabetic token, likely the drug's brand/generic name
   const tokens = cleaned.split(/[^a-zA-Z]+/).filter(t => t.length >= 4);
   tokens.sort((a,b) => b.length - a.length);
   return tokens[0] || cleaned.slice(0,20);
@@ -946,10 +816,11 @@ function showResult(rawText){
   const detail = document.getElementById("matchDetail");
   const note = document.getElementById("resultNote");
 
+  // Ignore visual match if it's essentially the same drug name (re-scanning the same product)
   let effectiveVisual = visualMatch;
   if(visualMatch){
     const nameSim = similarity(cleaned, visualMatch.label);
-    if(nameSim >= 0.55) effectiveVisual = null; 
+    if(nameSim >= 0.55) effectiveVisual = null; // likely same product, not a LASA pair
   }
 
   const guessName = bestGuessName(cleaned);
@@ -1009,7 +880,7 @@ document.getElementById("saveRefBtn").addEventListener("click", () => {
   setTimeout(() => toast.classList.remove("show"), 2500);
 });
 
-// ---------- Export / Import ----------
+// ---------- Export / Import (untuk berbagi database antar HP, gratis, tanpa server) ----------
 document.getElementById("exportBtn").addEventListener("click", () => {
   const payload = { pairs, refs, exportedAt: new Date().toISOString() };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
@@ -1038,11 +909,11 @@ document.getElementById("importInput").addEventListener("change", async (e) => {
     setTimeout(() => statusLine.textContent = "", 3000);
   }catch(err){
     statusLine.textContent = "Gagal mengimpor file — pastikan format JSON benar.";
+    console.error(err);
   }
   e.target.value = "";
 });
 
-// Listener Input File
 document.getElementById("cameraInput").addEventListener("change", e => handleFile(e.target.files[0]));
 document.getElementById("galleryInput").addEventListener("change", e => handleFile(e.target.files[0]));
 </script>
