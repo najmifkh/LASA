@@ -162,7 +162,7 @@
     min-height:16px;
   }
 
-  /* Modal Crop */
+  /* Modal Crop yang sudah diperbaiki */
   .crop-modal {
     position: fixed; inset: 0; background: #000; z-index: 9999;
     display: none; flex-direction: column;
@@ -173,8 +173,20 @@
     background: #111; border-bottom: 1px solid #333;
   }
   .crop-header h2 { font-family: 'Space Grotesk', sans-serif; font-size: 16px; margin: 0; color: #fff; }
-  .crop-body { flex: 1; width: 100%; display: block; overflow: hidden; background: #000; }
-  .crop-body img { max-width: 100%; display: block; }
+  .crop-body { 
+    flex: 1; 
+    width: 100%; 
+    display: flex; 
+    align-items: center; 
+    justify-content: center; 
+    overflow: hidden; 
+    background: #000; 
+  }
+  .crop-body img { 
+    max-width: 100%; 
+    max-height: 70vh; /* Mencegah gambar membesar keluar layar */
+    display: block; 
+  }
   .crop-footer { padding: 16px 20px; background: #111; }
 
   /* Result card */
@@ -418,7 +430,7 @@
 <div id="cropModal" class="crop-modal">
   <div class="crop-header">
     <h2>Potong Area Obat</h2>
-    <button id="btnCancelCrop" style="background:none; border:none; color:var(--danger); font-size:14px; font-weight:600; cursor:pointer;">Batal</button>
+    <button id="btnCancelCrop" style="background:none; border:none; color:#B23A3A; font-size:14px; font-weight:600; cursor:pointer;">Batal</button>
   </div>
   <div class="crop-body">
     <img id="imageToCrop" src="">
@@ -674,7 +686,7 @@ function renderRefList(){
 
 loadAll();
 
-// Karena sudah di-crop manual oleh user, kita kembalikan fungsi getColorSignature ke versi asli (tanpa auto-crop)
+// Fungsi untuk Color Signature (menggunakan hasil potongan/crop)
 function getColorSignature(imgEl, w=10, h=12){
   const canvas = document.createElement("canvas");
   canvas.width = w; canvas.height = h;
@@ -786,33 +798,32 @@ const resultCard = document.getElementById("resultCard");
 let currentSignature = null;
 let currentThumb = null;
 
-// Fungsi 1: Munculkan Modal Crop saat gambar dipilih
+// Fungsi 1: Membuka Modal Crop dan Menyiapkan Gambar
 async function handleFile(file){
   if(!file) return;
   
   const cropModal = document.getElementById("cropModal");
   const imageToCrop = document.getElementById("imageToCrop");
   
-  // 1. Munculkan modalnya terlebih dahulu
   cropModal.classList.add("show");
   
-  // Hapus instance cropper lama jika ada
+  // Bersihkan cropper lama jika ada
   if(cropper) {
     cropper.destroy();
     cropper = null;
   }
   
+  // Set inisialisasi Cropper dengan Jeda (Timeout) agar tidak error/membesar
   imageToCrop.onload = () => {
-    // 2. Beri jeda 100 milidetik agar modal selesai dirender 100% oleh browser
-   setTimeout(() => {
+    setTimeout(() => {
       cropper = new Cropper(imageToCrop, {
-        viewMode: 1,          
-        dragMode: 'crop',     
-        autoCropArea: 0.9,    
-        background: false,    
-        zoomable: false,      
+        viewMode: 1,
+        dragMode: 'crop',
+        autoCropArea: 0.9,
+        background: false, // Menghilangkan background kotak-kotak
+        zoomable: false,   // Mematikan fitur zoom agar gambar tidak meleset
         restore: false,
-        guides: true,         
+        guides: true,
         center: true,
         highlight: false,
         cropBoxMovable: true,
@@ -822,17 +833,46 @@ async function handleFile(file){
     }, 100);
   };
   
-  // Masukkan gambar
   imageToCrop.src = URL.createObjectURL(file);
   
-  // Kosongkan input agar kamu bisa memilih foto yang sama jika batal
+  // Reset input agar pengguna bisa memfoto ulang dengan file yang sama
   document.getElementById("cameraInput").value = "";
   document.getElementById("galleryInput").value = "";
 }
 
-// Fungsi 2: Proses OCR dan Color Signature dari gambar hasil Crop
+// Tombol Batal Crop
+document.getElementById("btnCancelCrop").addEventListener("click", () => {
+  document.getElementById("cropModal").classList.remove("show");
+  if(cropper) {
+    cropper.destroy();
+    cropper = null;
+  }
+});
+
+// Tombol Potong & Scan (Sudah dilengkapi pembatas resolusi agar HP tidak hang)
+document.getElementById("btnConfirmCrop").addEventListener("click", () => {
+  if(!cropper) return;
+  
+  // Dapatkan hasil potongan dengan resolusi maksimal yang aman
+  const canvas = cropper.getCroppedCanvas({
+    maxWidth: 1024,
+    maxHeight: 1024
+  });
+  
+  if (!canvas) {
+    alert("Gagal memotong gambar. Silakan coba foto ulang.");
+    return;
+  }
+  
+  document.getElementById("cropModal").classList.remove("show");
+  cropper.destroy();
+  cropper = null;
+  
+  startScan(canvas);
+});
+
+// Fungsi 2: Memulai Scan OCR
 async function startScan(canvas){
-  // Convert canvas ke blob (seperti file gambar) untuk Tesseract
   canvas.toBlob(async (blob) => {
     const url = URL.createObjectURL(blob);
     
@@ -987,7 +1027,7 @@ document.getElementById("importInput").addEventListener("change", async (e) => {
   e.target.value = "";
 });
 
-// Listener untuk file input langsung memanggil handleFile (menuju Crop)
+// Listener Input File
 document.getElementById("cameraInput").addEventListener("change", e => handleFile(e.target.files[0]));
 document.getElementById("galleryInput").addEventListener("change", e => handleFile(e.target.files[0]));
 </script>
