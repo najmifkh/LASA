@@ -644,13 +644,22 @@ function renderRefList(){
 
 loadAll();
 
-// Compute a small color-grid fingerprint of an image element (downsample = auto-average per cell)
 function getColorSignature(imgEl, w=10, h=12){
   const canvas = document.createElement("canvas");
   canvas.width = w; canvas.height = h;
   const ctx = canvas.getContext("2d");
   ctx.imageSmoothingEnabled = true;
-  ctx.drawImage(imgEl, 0, 0, w, h);
+  
+  const nw = imgEl.naturalWidth || imgEl.width;
+  const nh = imgEl.naturalHeight || imgEl.height;
+  
+  const cropW = nw * 0.6;
+  const cropH = nh * 0.6;
+  const startX = (nw - cropW) / 2;
+  const startY = (nh - cropH) / 2;
+  
+  ctx.drawImage(imgEl, startX, startY, cropW, cropH, 0, 0, w, h);
+  
   const data = ctx.getImageData(0,0,w,h).data;
   const sig = [];
   for(let i=0;i<data.length;i+=4) sig.push(data[i], data[i+1], data[i+2]);
