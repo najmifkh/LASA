@@ -724,7 +724,7 @@ function sigSimilarity(a,b){
   
   return sim < 0 ? 0 : sim;
 }
-const VISUAL_THRESHOLD = 0.85;
+const VISUAL_THRESHOLD = 0.75;
 function findVisualMatch(signature){
   let best = null;
   refs.forEach(r => {
