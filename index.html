@@ -789,18 +789,20 @@ let currentThumb = null;
 // Fungsi 1: Munculkan Modal Crop saat gambar dipilih
 async function handleFile(file){
   if(!file) return;
-  const url = URL.createObjectURL(file);
   
   const cropModal = document.getElementById("cropModal");
   const imageToCrop = document.getElementById("imageToCrop");
   
-  imageToCrop.src = url;
+  // Tampilkan modal terlebih dahulu agar Cropper bisa mengukur dimensinya
   cropModal.classList.add("show");
   
   // Hapus instance cropper lama jika ada
-  if(cropper) cropper.destroy();
+  if(cropper) {
+    cropper.destroy();
+    cropper = null;
+  }
   
-  // Inisialisasi Cropper.js
+  // PENTING: Pasang fungsi deteksi gambar (onload) SEBELUM memasukkan URL gambar
   imageToCrop.onload = () => {
     cropper = new Cropper(imageToCrop, {
       viewMode: 1,
@@ -815,31 +817,10 @@ async function handleFile(file){
       toggleDragModeOnDblclick: false,
     });
   };
+  
+  // Masukkan sumber gambarnya di akhir
+  imageToCrop.src = URL.createObjectURL(file);
 }
-
-// Tombol Batal Crop
-document.getElementById("btnCancelCrop").addEventListener("click", () => {
-  document.getElementById("cropModal").classList.remove("show");
-  if(cropper) cropper.destroy();
-  // Kosongkan input file agar bisa memilih file yang sama lagi jika perlu
-  document.getElementById("cameraInput").value = "";
-  document.getElementById("galleryInput").value = "";
-});
-
-// Tombol Potong & Scan
-document.getElementById("btnConfirmCrop").addEventListener("click", () => {
-  if(!cropper) return;
-  
-  // Dapatkan hasil potongan berupa elemen Canvas
-  const canvas = cropper.getCroppedCanvas();
-  
-  // Sembunyikan modal dan hapus cropper
-  document.getElementById("cropModal").classList.remove("show");
-  cropper.destroy();
-  
-  // Mulai proses scan menggunakan gambar yang sudah di-crop
-  startScan(canvas);
-});
 
 // Fungsi 2: Proses OCR dan Color Signature dari gambar hasil Crop
 async function startScan(canvas){
