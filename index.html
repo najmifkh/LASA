@@ -6,7 +6,11 @@
 <title>Cek LASA — Scanner Obat</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<!-- Tambahan Library untuk OCR dan Cropper -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js"></script>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+
 <style>
   :root{
     --bg: #F4F7F6;
@@ -157,6 +161,21 @@
     text-align:center;
     min-height:16px;
   }
+
+  /* Modal Crop */
+  .crop-modal {
+    position: fixed; inset: 0; background: var(--bg); z-index: 999;
+    display: none; flex-direction: column;
+  }
+  .crop-modal.show { display: flex; }
+  .crop-header {
+    padding: 16px 20px; display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 1px solid var(--line); background: var(--surface);
+  }
+  .crop-header h2 { font-family: 'Space Grotesk', sans-serif; font-size: 16px; margin: 0; }
+  .crop-body { flex: 1; background: #000; display: flex; align-items: center; justify-content: center; }
+  .crop-body img { max-width: 100%; max-height: 100%; display: block; }
+  .crop-footer { padding: 16px 20px; background: var(--surface); }
 
   /* Result card */
   .result{
@@ -394,6 +413,21 @@
 </style>
 </head>
 <body>
+
+<!-- Modal Crop Element -->
+<div id="cropModal" class="crop-modal">
+  <div class="crop-header">
+    <h2>Potong Area Obat</h2>
+    <button id="btnCancelCrop" style="background:none; border:none; color:var(--danger); font-size:14px; font-weight:600; cursor:pointer;">Batal</button>
+  </div>
+  <div class="crop-body">
+    <img id="imageToCrop" src="">
+  </div>
+  <div class="crop-footer">
+    <button id="btnConfirmCrop" class="btn btn-primary" style="width:100%;">Potong & Scan</button>
+  </div>
+</div>
+
 <div class="app">
 
   <header>
@@ -528,6 +562,7 @@ let pairs = [];
 const STORE_KEY = "lasa_pairs_v1";
 const REF_KEY = "lasa_photo_refs_v1";
 let refs = [];
+let cropper = null; // Variabel penampung Cropper.js
 
 // ---------- Google Sheets sebagai database bersama (via Apps Script Web App) ----------
 const API_URL = "https://script.google.com/macros/s/AKfycbx9b6LxSgUpD1_EaNUS8CBK63aGckhZsn2niZskTr5HuyXgR6W9nldv5Xa6xQyXF1M5/exec";
@@ -591,11 +626,6 @@ async function syncAll(){
   }
 }
 
-async function loadPairs(){ /* kept for compatibility, use loadAll() at startup instead */ }
-async function savePairs(){ await syncAll(); }
-async function loadRefs(){ /* kept for compatibility, use loadAll() at startup instead */ }
-async function saveRefs(){ await syncAll(); }
-
 function renderList(){
   const list = document.getElementById("pairList");
   const count = document.getElementById("countPill");
@@ -644,22 +674,13 @@ function renderRefList(){
 
 loadAll();
 
+// Karena sudah di-crop manual oleh user, kita kembalikan fungsi getColorSignature ke versi asli (tanpa auto-crop)
 function getColorSignature(imgEl, w=10, h=12){
   const canvas = document.createElement("canvas");
   canvas.width = w; canvas.height = h;
   const ctx = canvas.getContext("2d");
   ctx.imageSmoothingEnabled = true;
-  
-  const nw = imgEl.naturalWidth || imgEl.width;
-  const nh = imgEl.naturalHeight || imgEl.height;
-  
-  const cropW = nw * 0.6;
-  const cropH = nh * 0.6;
-  const startX = (nw - cropW) / 2;
-  const startY = (nh - cropH) / 2;
-  
-  ctx.drawImage(imgEl, startX, startY, cropW, cropH, 0, 0, w, h);
-  
+  ctx.drawImage(imgEl, 0, 0, w, h);
   const data = ctx.getImageData(0,0,w,h).data;
   const sig = [];
   for(let i=0;i<data.length;i+=4) sig.push(data[i], data[i+1], data[i+2]);
@@ -716,17 +737,14 @@ function similarity(a,b){
   return 1 - dist/maxLen;
 }
 
-// finds best matching pair given OCR text (checks if any known drug name appears / is similar within the text)
 function findLasaMatch(ocrText){
   const normText = normalize(ocrText);
   let best = null;
   pairs.forEach(([a,b,cat]) => {
     [[a,b],[b,a]].forEach(([drug, partner]) => {
       const nd = normalize(drug);
-      // direct substring hit
       let score = normText.includes(nd) ? 1 : 0;
       if(score === 0){
-        // sliding window fuzzy match against words/phrases in text
         const words = normText.split(" ");
         for(let w=1; w<=3; w++){
           for(let i=0;i+w<=words.length;i++){
@@ -745,7 +763,6 @@ function findLasaMatch(ocrText){
 }
 
 function highlightDiff(a,b){
-  // simple char-level diff highlight (tall-man style) for same-length-ish strings
   const maxLen = Math.max(a.length, b.length);
   let outA = "", outB = "";
   for(let i=0;i<maxLen;i++){
@@ -760,7 +777,7 @@ function highlightDiff(a,b){
   return [outA, outB];
 }
 
-// ---------- Camera / OCR flow ----------
+// ---------- Camera / OCR / Cropper flow ----------
 const scanZone = document.getElementById("scanZone");
 const preview = document.getElementById("preview");
 const statusLine = document.getElementById("statusLine");
@@ -769,43 +786,102 @@ const resultCard = document.getElementById("resultCard");
 let currentSignature = null;
 let currentThumb = null;
 
+// Fungsi 1: Munculkan Modal Crop saat gambar dipilih
 async function handleFile(file){
   if(!file) return;
   const url = URL.createObjectURL(file);
-  preview.src = url;
-  preview.style.display = "block";
-  scanZone.classList.remove("empty");
-  scanZone.classList.add("scanning");
-  resultCard.classList.remove("show");
-  document.getElementById("savedToast").classList.remove("show");
-  statusLine.textContent = "Membaca teks kemasan (OCR)…";
-
-  await new Promise(res => {
-    if(preview.complete) res(); else preview.onload = res;
-  });
-  currentSignature = getColorSignature(preview);
-  currentThumb = makeThumb(preview);
-
-  try{
-    const { data: { text } } = await Tesseract.recognize(file, "eng", {
-      logger: m => {
-        if(m.status === "recognizing text"){
-          statusLine.textContent = `Membaca teks kemasan… ${(m.progress*100).toFixed(0)}%`;
-        }
-      }
+  
+  const cropModal = document.getElementById("cropModal");
+  const imageToCrop = document.getElementById("imageToCrop");
+  
+  imageToCrop.src = url;
+  cropModal.classList.add("show");
+  
+  // Hapus instance cropper lama jika ada
+  if(cropper) cropper.destroy();
+  
+  // Inisialisasi Cropper.js
+  imageToCrop.onload = () => {
+    cropper = new Cropper(imageToCrop, {
+      viewMode: 1,
+      dragMode: 'crop',
+      autoCropArea: 0.8,
+      restore: false,
+      guides: true,
+      center: true,
+      highlight: false,
+      cropBoxMovable: true,
+      cropBoxResizable: true,
+      toggleDragModeOnDblclick: false,
     });
-    scanZone.classList.remove("scanning");
-    statusLine.textContent = "";
-    showResult(text);
-  }catch(e){
-    scanZone.classList.remove("scanning");
-    statusLine.textContent = "Gagal membaca gambar, coba foto lebih jelas/terang.";
-    console.error(e);
-  }
+  };
+}
+
+// Tombol Batal Crop
+document.getElementById("btnCancelCrop").addEventListener("click", () => {
+  document.getElementById("cropModal").classList.remove("show");
+  if(cropper) cropper.destroy();
+  // Kosongkan input file agar bisa memilih file yang sama lagi jika perlu
+  document.getElementById("cameraInput").value = "";
+  document.getElementById("galleryInput").value = "";
+});
+
+// Tombol Potong & Scan
+document.getElementById("btnConfirmCrop").addEventListener("click", () => {
+  if(!cropper) return;
+  
+  // Dapatkan hasil potongan berupa elemen Canvas
+  const canvas = cropper.getCroppedCanvas();
+  
+  // Sembunyikan modal dan hapus cropper
+  document.getElementById("cropModal").classList.remove("show");
+  cropper.destroy();
+  
+  // Mulai proses scan menggunakan gambar yang sudah di-crop
+  startScan(canvas);
+});
+
+// Fungsi 2: Proses OCR dan Color Signature dari gambar hasil Crop
+async function startScan(canvas){
+  // Convert canvas ke blob (seperti file gambar) untuk Tesseract
+  canvas.toBlob(async (blob) => {
+    const url = URL.createObjectURL(blob);
+    
+    preview.src = url;
+    preview.style.display = "block";
+    scanZone.classList.remove("empty");
+    scanZone.classList.add("scanning");
+    resultCard.classList.remove("show");
+    document.getElementById("savedToast").classList.remove("show");
+    statusLine.textContent = "Membaca teks kemasan (OCR)…";
+
+    await new Promise(res => {
+      if(preview.complete) res(); else preview.onload = res;
+    });
+    
+    currentSignature = getColorSignature(preview);
+    currentThumb = makeThumb(preview);
+
+    try{
+      const { data: { text } } = await Tesseract.recognize(blob, "eng", {
+        logger: m => {
+          if(m.status === "recognizing text"){
+            statusLine.textContent = `Membaca teks kemasan… ${(m.progress*100).toFixed(0)}%`;
+          }
+        }
+      });
+      scanZone.classList.remove("scanning");
+      statusLine.textContent = "";
+      showResult(text);
+    }catch(e){
+      scanZone.classList.remove("scanning");
+      statusLine.textContent = "Gagal membaca gambar, coba foto lebih jelas/terang.";
+      console.error(e);
+    }
+  }, 'image/jpeg');
 }
 
 function bestGuessName(cleaned){
-  // heuristic: longest alphabetic token, likely the drug's brand/generic name
   const tokens = cleaned.split(/[^a-zA-Z]+/).filter(t => t.length >= 4);
   tokens.sort((a,b) => b.length - a.length);
   return tokens[0] || cleaned.slice(0,20);
@@ -825,11 +901,10 @@ function showResult(rawText){
   const detail = document.getElementById("matchDetail");
   const note = document.getElementById("resultNote");
 
-  // Ignore visual match if it's essentially the same drug name (re-scanning the same product)
   let effectiveVisual = visualMatch;
   if(visualMatch){
     const nameSim = similarity(cleaned, visualMatch.label);
-    if(nameSim >= 0.55) effectiveVisual = null; // likely same product, not a LASA pair
+    if(nameSim >= 0.55) effectiveVisual = null; 
   }
 
   const guessName = bestGuessName(cleaned);
@@ -889,7 +964,7 @@ document.getElementById("saveRefBtn").addEventListener("click", () => {
   setTimeout(() => toast.classList.remove("show"), 2500);
 });
 
-// ---------- Export / Import (untuk berbagi database antar HP, gratis, tanpa server) ----------
+// ---------- Export / Import ----------
 document.getElementById("exportBtn").addEventListener("click", () => {
   const payload = { pairs, refs, exportedAt: new Date().toISOString() };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
@@ -923,6 +998,7 @@ document.getElementById("importInput").addEventListener("change", async (e) => {
   e.target.value = "";
 });
 
+// Listener untuk file input langsung memanggil handleFile (menuju Crop)
 document.getElementById("cameraInput").addEventListener("change", e => handleFile(e.target.files[0]));
 document.getElementById("galleryInput").addEventListener("change", e => handleFile(e.target.files[0]));
 </script>
