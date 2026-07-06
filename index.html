@@ -712,10 +712,17 @@ function makeThumb(imgEl, w=90, h=110){
 }
 function sigSimilarity(a,b){
   let sumSq = 0;
-  for(let i=0;i<a.length;i++){ const d=a[i]-b[i]; sumSq += d*d; }
+  for(let i=0;i<a.length;i++){ 
+    const d = a[i] - b[i]; 
+    sumSq += d*d; 
+  }
   const dist = Math.sqrt(sumSq);
-  const maxDist = Math.sqrt(a.length * 255 * 255);
-  return 1 - dist/maxDist;
+  
+  const avgDistPerChannel = dist / Math.sqrt(a.length);
+  
+  let sim = 1 - (avgDistPerChannel / 100);
+  
+  return sim < 0 ? 0 : sim;
 }
 const VISUAL_THRESHOLD = 0.70;
 function findVisualMatch(signature){
